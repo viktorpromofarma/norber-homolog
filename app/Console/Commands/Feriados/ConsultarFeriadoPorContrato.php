@@ -40,6 +40,32 @@ class ConsultarFeriadoPorContrato extends Command
         $response = $response->getBody()->getContents();
         $data = json_decode($response, true);
 
-        dd($data);
+        // pega só a lista de itens
+        $itens = $data['ListaDeFiltro'] ?? [];
+
+        $dadosCorrigidos = [];
+
+        foreach ($itens as $item) {
+            $marcacao = str_replace(['–', '—'], '-', $item['Marcacoes']);
+            $marcacao = trim($marcacao);
+
+            if (strpos($marcacao, '-') !== false) {
+                // limita o explode a 2 partes
+                [$m1, $m2] = array_map('trim', explode('-', $marcacao, 2));
+
+                dd($m1, $m2);
+
+                $dadosCorrigidos[] = [
+                    'Data'       => $item['Data'],
+                    'Nome'       => $item['Nome'],
+                    'Matricula'  => $item['Matricula'],
+                    'Cpf'        => $item['Cpf'],
+                    'Marcacoes1' => $m1,
+                    'Marcacoes2' => $m2,
+                ];
+            }
+        }
+
+        dd($dadosCorrigidos);
     }
 }

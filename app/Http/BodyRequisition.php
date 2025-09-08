@@ -11,18 +11,33 @@ class BodyRequisition
      *
      * @return array
      */
-    public static function getBody()
+
+    public static function getPeriod($startDate = null, $endDate = null)
     {
+        $start = $startDate ?: date('Y-m-01'); // Primeiro dia do mês atual
+        $end = $endDate ?: date('Y-m-t'); // Último dia do mês atual
+
         return [
-            "DataInicio"  => "2025-01-01",
-            "DataFim"     => "2025-01-31",
+            "DataInicio" => $start,
+            "DataFim"    => $end,
+        ];
+    }
+
+    public static function getBody($startDate = null, $endDate = null, $conceito = null, $codigoExterno = null)
+    {
+        $period = self::getPeriod($startDate, $endDate);
+
+        return [
+            "DataInicio"  => $period['DataInicio'],
+            "DataFim"     => $period['DataFim'],
             "ListaDeFiltros" => [
                 [
-                    "Conceito"      => 1,
-                    "CodigoExterno" => "2"
+                    "Conceito"      => $conceito,
+                    "CodigoExterno" => $codigoExterno
+
                 ]
             ],
-            "Pagina" => 0
+            "Pagina" => 1
         ];
     }
 }

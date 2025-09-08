@@ -31,7 +31,6 @@ class ResgatarToken extends Command
 
 
 
-
         $res = $client->post($urlCompleta, [
             'headers' => $headers,
             'body'    => json_encode($body),
@@ -39,6 +38,8 @@ class ResgatarToken extends Command
 
         $response = $res->getBody()->getContents();
         $data = json_decode($response, true);
+
+
 
         $token = $data['ObjetoDeRetorno'] ?? null;
 
