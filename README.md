@@ -79,6 +79,9 @@ Para dúvidas sobre o projeto, entre em contato através de:
 -   **Desenvolvimento**: `Viktor Santos Moitinho`
 -   **Email**: viktor.santos@promofarma.com.br
 
+-   **Desenvolvimento**: `Mauri Pereira da Silva`
+-   **Email**: mauri@promofarma.com.br
+
 -   **Recursos Humanos**:`João Vitor Avoglia de Almeida`
 -   **Email**: joao.vitor@promofarma.com.br
 
