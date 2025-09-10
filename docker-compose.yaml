@@ -9,15 +9,3 @@ services:
       - "5173:5173" # vite
     volumes:
       - "./.:/var/www/html"
-
-  norber_api_http:
-    container_name: norber_api_http
-    image: nginx
-    ports:
-      - "8185:80" # http
-    volumes:
-      - "./.docker/nginx/nginx.conf:/etc/nginx/nginx.conf"
-      - "./.docker/nginx/http.conf:/etc/nginx/conf.d/default.conf"
-      - "./.:/var/www/html"
-    depends_on:
-      - "norber_api_php"
