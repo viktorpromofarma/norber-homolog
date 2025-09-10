@@ -38,14 +38,14 @@ Instalar Ubuntu via WSL : https://learn.microsoft.com/pt-br/windows/wsl/install
 
 # Comandos
 
-    Lista dos principais comandos utilizados no projeto:
+Lista dos principais comandos utilizados no projeto:
 
-    *Ao receber uma lista de registros de conceitos diferentes, para compor este filtro de contratos através do
-    conceito informado, o método deverá seguir a ordem hierárquica, agrupando os conceitos na seguinte ordem:*
+_Ao receber uma lista de registros de conceitos diferentes, para compor este filtro de contratos através do
+conceito informado, o método deverá seguir a ordem hierárquica, agrupando os conceitos na seguinte ordem:_
 
-    • 1º Empresa;
-    • 2º Unidade Organizacional;
-    • 3º Matrícula do contrato.
+• 1º Empresa;
+• 2º Unidade Organizacional;
+• 3º Matrícula do contrato.
 
 **Para executar cada comando é necessário digitar no terminal php artisan**
 
