@@ -22,8 +22,41 @@ Instalar Ubuntu via VM : https://4linux.com.br/como-instalar-o-linux/
 
 Instalar Ubuntu via WSL : https://learn.microsoft.com/pt-br/windows/wsl/install
 
-# Acessos
+1. **Clonar esse repositório**
 
-# Possíveis Dúvidas
+    Faça o clone desse repositório em sua máquina, de preferência com o nome padrão norber_api.
+
+2. **Iniciando o projeto**
+
+    Execute o comando _docker compose up -d --b_ no terminal no diretório do projeto.
+
+3. **Configuração do ENV**
+
+    Após a criação do container, acesse o diretório com o comando cd, após isso execute o comando **cp .env.example .env**,
+    assim será criado o arquivo .env, adicione as credencias do banco **PROMOFARMA_API** na configuração de banco de dados.
+    Existem 2 campos necessários dentro do ENV que precisam estar preenchidos que são API_USER e API_PASSWORD, esses campos são as credenciais da API (Se não possuir entre em contato pelo email com viktor.santos@promofarma.com.br ou mauri@promofarma.com.br)
+
+# Comandos
+
+    Lista dos principais comandos utilizados no projeto:
+
+    *Ao receber uma lista de registros de conceitos diferentes, para compor este filtro de contratos através do
+    conceito informado, o método deverá seguir a ordem hierárquica, agrupando os conceitos na seguinte ordem:*
+
+    • 1º Empresa;
+    • 2º Unidade Organizacional;
+    • 3º Matrícula do contrato.
+
+**Para executar cada comando é necessário digitar no terminal php artisan**
+
+-   ### \***\*Resgatar o token\*\***:
+-   `Servidor de produção` : https://prd-pt1.lg.com.br/NorberApi/api/autenticacao/autenticar
+-   `Servidor de Homologação` : https://hml-pt1.lg.com.br/NorberApi/api/autenticacao/autenticar
+-   `COMANDO DA APLICAÇÃO` : **php artisan norber:resgatar-token**
+
+-   ### \***\*Saldo de banco de horas\*\***:
+-   `Servidor de produção` : https://prd-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
+-   `Servidor de Homologação` : https://hml-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
+-   `COMANDO DA APLICAÇÃO` : **php artisan norber:listar-saldo --MesAnoReferencia="2025-01" --Conceito="1" --CodigoExterno="8"**
 
 # Contato e suporte
