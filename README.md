@@ -14,7 +14,7 @@ _Este projeto utiliza para a integração a api Norber, o framework PHP Laravel,
 
 Para a configuração do ambiente é necessário seguir os passos abaixo, assim você poderá executar a integração localmente:
 
-OBS: Todo o ambiente de desenvolvimento foi criado em linux base DEB utilizando WSL, caso sua máquina não possuir uma vm ou wsl, faça a instalação seguindo o manuais/links abaixo.
+OBS: Todo o ambiente de desenvolvimento foi criado em linux base DEB utilizando WSL, caso sua máquina não possua uma vm ou wsl, faça a instalação seguindo o manuais/links abaixo.
 
 Instalar Ubuntu via VM : https://4linux.com.br/como-instalar-o-linux/
 
