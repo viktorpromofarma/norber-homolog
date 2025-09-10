@@ -1,0 +1,10 @@
+#!/bin/bash
+
+# Data atual
+data_atual=$(date +"%d/%m/%Y")
+
+# Mesma data do mês passado
+data_mes_passado=$(date -d "-1 month" +"%d/%m/%Y")
+
+echo "Data atual: $data_atual"
+echo "Mês passado: $data_mes_passado"
