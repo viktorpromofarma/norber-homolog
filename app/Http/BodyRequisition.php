@@ -23,7 +23,7 @@ class BodyRequisition
         ];
     }
 
-    public static function getBody($startDate = null, $endDate = null, $conceito = null, $codigoExterno = null)
+    public static function getBody($startDate = null, $endDate = null, $conceito = null, $codigoExterno = null, $pagina = null)
     {
         $period = self::getPeriod($startDate, $endDate);
 
@@ -37,7 +37,24 @@ class BodyRequisition
 
                 ]
             ],
-            "Pagina" => 1
+            "Pagina" => $pagina
+        ];
+    }
+
+    public static function getBodySaldo($startDate = null,  $conceito = null, $codigoExterno = null, $pagina = null)
+    {
+        $period = self::getPeriod($startDate);
+
+        return [
+            "MesAnoReferencia"  => $period['DataInicio'],
+            "ListaDeFiltros" => [
+                [
+                    "Conceito"      => $conceito,
+                    "CodigoExterno" => $codigoExterno
+
+                ]
+            ],
+            "Pagina" => $pagina
         ];
     }
 }
