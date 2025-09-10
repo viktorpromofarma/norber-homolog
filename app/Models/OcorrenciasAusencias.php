@@ -18,7 +18,8 @@ class OcorrenciasAusencias extends Model
         'FIM_EXPEDIENTE',
         'DESCRICAO',
         'JUSTIFICATIVA',
-        'QUANTIDADE_HORAS'
+        'QUANTIDADE_HORAS',
+        'PAGINA'
     ];
 
     public $timestamps = false;

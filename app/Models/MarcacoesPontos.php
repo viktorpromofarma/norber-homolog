@@ -16,7 +16,8 @@ class MarcacoesPontos extends Model
         'NOME',
         'MATRICULA',
         'CPF',
-        'MARCACOES'
+        'MARCACOES',
+        'PAGINA'
     ];
 
     public $timestamps = false;
