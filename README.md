@@ -10,8 +10,6 @@ _Este projeto utiliza para a integração a api Norber, o framework PHP Laravel,
 
 -   `Ambiente docker padrão`: https://github.com/Promofarma/Docker-Alpine3.20-PHP.git
 
-# Como utilizar a integração
-
 ## Configuração do ambiente
 
 Para a configuração do ambiente é necessário seguir os passos abaixo, assim você poderá executar a integração localmente:
