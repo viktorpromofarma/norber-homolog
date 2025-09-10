@@ -44,19 +44,50 @@ _Ao receber uma lista de registros de conceitos diferentes, para compor este fil
 conceito informado, o método deverá seguir a ordem hierárquica, agrupando os conceitos na seguinte ordem:_
 
 • 1º Empresa;
+
 • 2º Unidade Organizacional;
+
 • 3º Matrícula do contrato.
+
+_Código Externo: Código do conceito informado na tag anterior. Sendo código da
+empresa, código da unidade organizacional ou matrícula do contrato_
 
 **Para executar cada comando é necessário digitar no terminal php artisan**
 
--   ### \***\*Resgatar o token\*\***:
+-   ### Resgatar o token:
 -   `Servidor de produção` : https://prd-pt1.lg.com.br/NorberApi/api/autenticacao/autenticar
 -   `Servidor de Homologação` : https://hml-pt1.lg.com.br/NorberApi/api/autenticacao/autenticar
 -   `COMANDO DA APLICAÇÃO` : **php artisan norber:resgatar-token**
 
--   ### \***\*Saldo de banco de horas\*\***:
+-   ### Saldo de banco de horas:
 -   `Servidor de produção` : https://prd-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
 -   `Servidor de Homologação` : https://hml-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
--   `COMANDO DA APLICAÇÃO` : **php artisan norber:listar-saldo --MesAnoReferencia="2025-01" --Conceito="1" --CodigoExterno="8"**
+-   `COMANDO DA APLICAÇÃO` : **php artisan norber:listar-saldo --MesAnoReferencia="YYYY-mm" --Conceito="NUMBER" --CodigoExterno="NUMBER"**
 
-# Contato e suporte
+-   ### Retorno das marcações de ponto:
+-   `Servidor de produção` : https://prd-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
+-   `Servidor de Homologação` : https://hml-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
+-   `COMANDO DA APLICAÇÃO` : **php artisan norber:retornar-marcacoes --start-date="YYYY-MM-DD" --end-date="YYYY-MM-DD" --Conceito="NUMBER" --CodigoExterno="NUMBER"**
+
+-   ### Retorno as ocorrencias na marcação do ponto:
+-   `Servidor de produção` : https://prd-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
+-   `Servidor de Homologação` : https://hml-pt1.lg.com.br/NorberApi/api/banco-de-horas/listar-saldo-v2
+-   `COMANDO DA APLICAÇÃO` : **php artisan norber:retorna-ocorrencia-ausencia --start-date="YYYY-MM-DD" --end-date="YYYY-MM-DD" --Conceito="NUMBER" --CodigoExterno="NUMBER"**
+
+## Dúvidas
+
+Para dúvidas sobre o projeto, entre em contato através de:
+
+-   **Desenvolvimento**: `Viktor Santos Moitinho`
+-   **Email**: viktor.santos@promofarma.com.br
+
+-   **Recursos Humanos**:`João Vitor Avoglia de Almeida`
+-   **Email**: joao.vitor@promofarma.com.br
+
+## Referências
+
+-   **Laravel** : https://laravel.com/
+-   **Docker** : https://docs.docker.com/
+-   **API Norber** : https://prd-pt1.lg.com.br/NorberApi/swagger/ui/index
+-   **Instalação via VMW** : https://4linux.com.br
+-   **Instalação via WSL** : https://learn.microsoft.com
