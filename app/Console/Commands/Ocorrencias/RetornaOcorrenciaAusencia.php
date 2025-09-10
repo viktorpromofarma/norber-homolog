@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands\Ocorrencias;
 
+use App\Models\Logs;
 use App\Http\Headers;
 use GuzzleHttp\Client;
 use App\Console\UrlBase;
@@ -52,72 +53,92 @@ class RetornaOcorrenciaAusencia extends Command
         $headers = Headers::getHeaders();
 
         // Passar as datas para o BodyRequisition
-        $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno);
+
         $url_base = $this->urlBaseApi();
 
         $command = 'Ocorrencia/RetornaOcorrenciaAusencia';
 
+        $ultimaPaginaProcessada = OcorrenciasAusencias::where('DATA_OCORRENCIA', '>=', $startDate)
+            ->where('DATA_OCORRENCIA', '<=', $endDate)
+            ->max('PAGINA') ?? 0;
 
+        for ($pagina = $ultimaPaginaProcessada + 1;; $pagina++) {
 
-        try {
-            $response = $client->post($url_base . $command, [
-                'headers' => $headers,
-                'body'    => json_encode($body, JSON_UNESCAPED_UNICODE)
-            ]);
-
-            $responseContent = $response->getBody()->getContents();
-            $data = json_decode($responseContent, true);
-
-            // pega só a lista de itens
-            $itens = $data['ListaDeFiltro'] ?? [];
-
-            $this->info("Total de itens encontrados: " . count($itens));
-
-            $resultado = [];
-
-            foreach ($data['ListaDeFiltro'] as $filtro) {
-                $matricula = $filtro['Contrato']['Matricula'];
-
-                foreach ($filtro['OcorrenciasAusencias'] as $ocorrencia) {
-                    $resultado[] = [
-                        'Matricula'      => $matricula,
-                        'DataOcorrencia' => $ocorrencia['DataOcorrencia'],
-                        'Inicio'         => $ocorrencia['Inicio'],
-                        'Fim'            => $ocorrencia['Fim'],
-                        'Descricao'      => $ocorrencia['Tipo']['Descricao'],
-                        'Justificativa'  => $ocorrencia['Tipo']['Justificativa'],
-                        'QtdeHoras'      => $ocorrencia['QtdeHoras'],
-                    ];
-                }
-            }
-
-
+            $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno, $pagina);
 
             try {
+                $response = $client->post($url_base . $command, [
+                    'headers' => $headers,
+                    'body'    => json_encode($body, JSON_UNESCAPED_UNICODE)
+                ]);
 
-                foreach ($resultado as $item) {
-                    OcorrenciasAusencias::create([
-                        'MATRICULA'         => $item['Matricula'],
-                        'DATA_OCORRENCIA'   => $item['DataOcorrencia'],
-                        'INICIO_EXPEDIENTE' => $item['Inicio'],
-                        'FIM_EXPEDIENTE'    => $item['Fim'],
-                        'DESCRICAO'         => $item['Descricao'],
-                        'JUSTIFICATIVA'     => $item['Justificativa'],
-                        'QUANTIDADE_HORAS'  => $item['QtdeHoras'],
-                    ]);
+                $responseContent = $response->getBody()->getContents();
+                $data = json_decode($responseContent, true);
+
+                // pega só a lista de itens
+                $itens = $data['ListaDeFiltro'] ?? [];
+
+
+
+                $resultado = [];
+
+                foreach ($data['ListaDeFiltro'] as $filtro) {
+                    $matricula = $filtro['Contrato']['Matricula'];
+
+                    foreach ($filtro['OcorrenciasAusencias'] as $ocorrencia) {
+                        $resultado[] = [
+                            'Matricula'      => $matricula,
+                            'DataOcorrencia' => $ocorrencia['DataOcorrencia'],
+                            'Inicio'         => $ocorrencia['Inicio'],
+                            'Fim'            => $ocorrencia['Fim'],
+                            'Descricao'      => $ocorrencia['Tipo']['Descricao'],
+                            'Justificativa'  => $ocorrencia['Tipo']['Justificativa'],
+                            'QtdeHoras'      => $ocorrencia['QtdeHoras'],
+                        ];
+                    }
                 }
 
-                $this->info("Dados inseridos com sucesso na tabela NORBER_OCORRENCIAS_AUSENCIAS.");
-                return 0;
-            } catch (\Throwable $th) {
-                $this->error("Erro ao inserir dados: " . $th->getMessage());
+                try {
+
+                    foreach ($resultado as $item) {
+                        OcorrenciasAusencias::UpdateOrCreate([
+                            'MATRICULA'         => $item['Matricula'],
+                            'DATA_OCORRENCIA'   => $item['DataOcorrencia'],
+                            'INICIO_EXPEDIENTE' => $item['Inicio'],
+                            'FIM_EXPEDIENTE'    => $item['Fim'],
+                            'DESCRICAO'         => $item['Descricao'],
+                            'JUSTIFICATIVA'     => $item['Justificativa'],
+                            'QUANTIDADE_HORAS'  => $item['QtdeHoras'],
+                            'PAGINA'            => $data['Pagina']
+                        ]);
+                    }
+
+                    $this->info("Página {$pagina} processada com sucesso. Total registros: " . count($itens));
+
+                    Logs::create([
+                        'DATA_EXECUCAO' => now(),
+                        'COMANDO_EXECUTADO' =>  $command . ' - ' . json_encode($body),
+                        'STATUS_COMANDO' => $response->getStatusCode(),
+                        'TOTAL_REGISTROS' => count($itens)
+                    ]);
+
+                    if ($pagina % 10 === 0) {
+                        sleep(1);
+                    }
+
+
+                    if (isset($data['TotalPaginas']) && $pagina >= $data['TotalPaginas']) {
+                        break;
+                    }
+                } catch (\Throwable $th) {
+                    $this->error("Erro ao inserir dados: " . $th->getMessage());
+                    return 1;
+                }
+            } catch (\Exception $e) {
+                $this->error('Erro na requisição: ' . $e->getMessage());
                 return 1;
             }
-        } catch (\Exception $e) {
-            $this->error('Erro na requisição: ' . $e->getMessage());
-            return 1;
         }
-
         return 0;
     }
 }

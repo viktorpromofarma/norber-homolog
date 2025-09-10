@@ -8,7 +8,7 @@ use App\Console\UrlBase;
 use App\Http\BodyRequisition;
 use Illuminate\Console\Command;
 use App\Models\MarcacoesPontos;
-use Termwind\Components\Dd;
+use App\Models\Logs;
 
 class RetornarMarcacoes extends Command
 {
@@ -19,7 +19,7 @@ class RetornarMarcacoes extends Command
                             {--Conceito= : Conceito (formato: inteiro)}
                             {--CodigoExterno= : Código externo (formato: string)}';
 
-    protected $description = "Listar saldo de horas";
+    protected $description = "Listar marcações de pontos";
 
     protected function urlBaseApi()
     {
@@ -34,6 +34,7 @@ class RetornarMarcacoes extends Command
         $endDate = $this->option('end-date');
         $conceito = $this->option('Conceito');
         $codigoExterno = $this->option('CodigoExterno');
+
 
         // Validar se as datas foram fornecidas
         if (!$startDate || !$endDate) {
@@ -52,81 +53,109 @@ class RetornarMarcacoes extends Command
 
         $client = new Client();
         $headers = Headers::getHeaders();
-
-        // Passar as datas para o BodyRequisition
-        $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno);
         $url_base = $this->urlBaseApi();
-
         $command = 'marcacao/RetornaMarcacoes';
 
-        try {
-            $response = $client->post($url_base . $command, [
-                'headers' => $headers,
-                'body'    => json_encode($body, JSON_UNESCAPED_UNICODE)
-            ]);
-
-            $responseContent = $response->getBody()->getContents();
-            $data = json_decode($responseContent, true);
 
 
-            // pega só a lista de itens
-            $itens = $data['ListaDeFiltro'] ?? [];
+        $ultimaPaginaProcessada = MarcacoesPontos::where('DATA', '>=', $startDate)
+            ->where('DATA', '<=', $endDate)
+            ->max('PAGINA') ?? 0;
 
-            $dadosCorrigidos = [];
 
-            foreach ($itens as $item) {
-                $marcacao = str_replace(['–', '—'], '-', $item['Marcacoes']);
-                $marcacao = trim($marcacao);
+        for ($pagina = $ultimaPaginaProcessada + 1;; $pagina++) {
+            $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno, $pagina);
 
-                if (strpos($marcacao, '-') !== false) {
-                    $marcacoesArray = array_map('trim', explode('-', $marcacao));
+            try {
+                $response = $client->post($url_base . $command, [
+                    'headers' => $headers,
+                    'body'    => json_encode($body, JSON_UNESCAPED_UNICODE)
+                ]);
 
-                    $dados = [
-                        'Data'       => $item['Data'],
-                        'Nome'       => $item['Nome'],
-                        'Matricula'  => $item['Matricula'],
-                        'Cpf'        => $item['Cpf'],
-                    ];
+                $responseContent = $response->getBody()->getContents();
+                $data = json_decode($responseContent, true);
 
-                    foreach ($marcacoesArray as $index => $marcacoes) {
-                        $dados['Marcacoes' . ($index + 1)] = $marcacoes;
+                $itens = $data['ListaDeFiltro'] ?? [];
+                $dadosCorrigidos = [];
+
+                foreach ($itens as $item) {
+                    $marcacao = str_replace(['–', '—'], '-', $item['Marcacoes']);
+                    $marcacao = trim($marcacao);
+
+                    if (strpos($marcacao, '-') !== false) {
+                        $marcacoesArray = array_map('trim', explode('-', $marcacao));
+
+                        $dados = [
+                            'Data'       => $item['Data'],
+                            'Nome'       => $item['Nome'],
+                            'Matricula'  => $item['Matricula'],
+                            'Cpf'        => $item['Cpf'],
+                        ];
+
+                        foreach ($marcacoesArray as $index => $marcacoes) {
+                            $dados['Marcacoes' . ($index + 1)] = $marcacoes;
+                        }
+
+                        $dadosCorrigidos[] = $dados;
+                    } else {
+                        // SEM MARCAÇÕES também precisa ir pro banco
+                        $dadosCorrigidos[] = [
+                            'Data'      => $item['Data'],
+                            'Nome'      => $item['Nome'],
+                            'Matricula' => $item['Matricula'],
+                            'Cpf'       => $item['Cpf'],
+                            'Marcacoes1' => $marcacao
+                        ];
+                    }
+                }
+
+                // Inserir no banco de dados
+                foreach ($dadosCorrigidos as $dado) {
+                    $marcacoes = [];
+                    $i = 1;
+
+                    while (isset($dado['Marcacoes' . $i]) && !empty($dado['Marcacoes' . $i])) {
+                        $marcacoes[] = $dado['Marcacoes' . $i];
+                        $i++;
                     }
 
-                    $dadosCorrigidos[] = $dados;
-                }
-            }
-
-
-
-            // Inserir no banco de dados
-            foreach ($dadosCorrigidos as $dado) {
-                $marcacoes = [];
-                $i = 1;
-
-                while (isset($dado['Marcacoes' . $i]) && !empty($dado['Marcacoes' . $i])) {
-                    $marcacoes[] = $dado['Marcacoes' . $i];
-                    $i++;
-                }
-
-                // Insere cada marcação como registro separado
-                foreach ($marcacoes as $marcacao) {
-                    if (!empty($marcacao) && $marcacao !== '') {
-                        MarcacoesPontos::create([
+                    foreach ($marcacoes as $marcacao) {
+                        MarcacoesPontos::updateOrCreate([
                             'DATA' => $dado['Data'],
                             'MATRICULA' => $dado['Matricula'],
                             'NOME' => $dado['Nome'],
                             'CPF' => $dado['Cpf'],
-                            'MARCACOES' => $marcacao
+                            'MARCACOES' => $marcacao,
+                            'PAGINA' => $data['Pagina']
                         ]);
                     }
                 }
-            }
 
-            $this->info("Marcações inseridas com sucesso! Total de registros processados: " . count($dadosCorrigidos));
-            return 0;
-        } catch (\Exception $e) {
-            $this->error('Erro: ' . $e->getMessage());
-            return 1;
+                $this->info("Página {$pagina} processada com sucesso. Total registros: " . count($dadosCorrigidos));
+
+                Logs::create([
+                    'DATA_EXECUCAO' => now(),
+                    'COMANDO_EXECUTADO' =>  $command . ' - ' . json_encode($body),
+                    'STATUS_COMANDO' => $response->getStatusCode(),
+                    'TOTAL_REGISTROS' => count($dadosCorrigidos)
+                ]);
+
+
+                if ($pagina % 10 === 0) {
+                    sleep(1);
+                }
+
+                // quando chegar na última página, para o loop
+                if (isset($data['TotalPaginas']) && $pagina >= $data['TotalPaginas']) {
+                    break;
+                }
+            } catch (\Exception $e) {
+                $this->error("Erro na página {$pagina}: " . $e->getMessage());
+                break;
+            }
         }
+
+        return 0; // só aqui no final
+
     }
 }

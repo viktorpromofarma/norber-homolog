@@ -2,71 +2,91 @@
 
 namespace App\Console\Commands\BancoDeHoras;
 
-
 use App\Http\Headers;
 use GuzzleHttp\Client;
 use App\Console\UrlBase;
 use App\Http\BodyRequisition;
 use Illuminate\Console\Command;
-
+use App\Models\BancoHorasPeriodo;
 
 class ListarSaldo extends Command
 {
+    protected $signature = "norber:listar-saldo  
+                            {--MesAnoReferencia= : Data de referência (formato: YYYY-MM)}
+                            {--Conceito= : Conceito (formato: inteiro)}
+                            {--CodigoExterno= : Código externo (formato: string)}";
 
-    protected $signature = "norber:listar-saldo";
     protected $description = "Listar saldo de horas";
-
 
     protected function urlBaseApi()
     {
-        $urlBase = new UrlBase();
-        return $urlBase->getUrlbase();
+        return (new UrlBase())->getUrlbase();
     }
-
 
     public function handle()
     {
+        $MesAnoReferencia = $this->option('MesAnoReferencia');
+        $conceito = $this->option('Conceito');
+        $codigoExterno = $this->option('CodigoExterno');
+
         $client = new Client();
         $headers = Headers::getHeaders();
-
-        $body = BodyRequisition::getBody();
         $url_base = $this->urlBaseApi();
+        $command = 'banco-de-horas/listar-saldo-v2';
 
-        $command = 'marcacao/RetornaMarcacoes';
 
-        $response = $client->post($url_base . $command, [
-            'headers' => $headers,
-            'body'    => json_encode($body, JSON_UNESCAPED_UNICODE)
-        ]);
+        $ultimaPaginaProcessada = BancoHorasPeriodo::where('MES_ANO_REFERENCIA', $MesAnoReferencia)
+            ->max('PAGINA') ?? 0;
 
-        $response = $response->getBody()->getContents();
 
-        $data = json_decode($response, true);
+        for ($pagina = $ultimaPaginaProcessada + 1;; $pagina++) {
 
-        // pega só a lista de itens
-        $itens = $data['ListaDeFiltro'] ?? [];
+            $body = BodyRequisition::getBodySaldo($MesAnoReferencia, $conceito, $codigoExterno, $pagina);
 
-        $dadosCorrigidos = [];
+            try {
+                $response = $client->post($url_base . $command, [
+                    'headers' => $headers,
+                    'body'    => json_encode($body, JSON_UNESCAPED_UNICODE)
+                ]);
 
-        foreach ($itens as $item) {
-            $marcacao = str_replace(['–', '—'], '-', $item['Marcacoes']);
-            $marcacao = trim($marcacao);
+                $data = json_decode($response->getBody()->getContents(), true);
 
-            if (strpos($marcacao, '-') !== false) {
-                // limita o explode a 2 partes
-                [$m1, $m2] = array_map('trim', explode('-', $marcacao, 2));
 
-                $dadosCorrigidos[] = [
-                    'Data'       => $item['Data'],
-                    'Nome'       => $item['Nome'],
-                    'Matricula'  => $item['Matricula'],
-                    'Cpf'        => $item['Cpf'],
-                    'Marcacoes1' => $m1,
-                    'Marcacoes2' => $m2,
-                ];
+                if (empty($data['ListaDeFiltro'])) break;
+
+                $this->processarPagina($data, $pagina);
+
+
+                if ($pagina % 10 === 0) sleep(1);
+
+
+                if (isset($data['TotalPaginas']) && $pagina >= $data['TotalPaginas']) break;
+            } catch (\GuzzleHttp\Exception\RequestException $e) {
+                $this->error("Falha na página $pagina: " . $e->getMessage());
+                break;
             }
         }
 
-        dd($dadosCorrigidos);
+        return 0;
+    }
+
+    private function processarPagina(array $data, int $pagina)
+    {
+        $registros = [];
+
+        foreach ($data['ListaDeFiltro'] as $item) {
+            $registros[] = [
+                'MATRICULA'          => $item['Matricula'],
+                'SALDO_BANCO'        => $item['SaldoBanco'],
+                'MES_ANO_REFERENCIA' => $data['MesAnoReferencia'],
+                'PAGINA'             => $pagina
+            ];
+        }
+
+        BancoHorasPeriodo::upsert(
+            $registros,
+            ['MATRICULA', 'MES_ANO_REFERENCIA'], // chave única
+            ['SALDO_BANCO', 'PAGINA']            // campos que serão atualizados
+        );
     }
 }
