@@ -23,7 +23,7 @@ class BodyRequisition
         ];
     }
 
-    public static function getBody($startDate = null, $endDate = null, $conceito = null, $codigoExterno = null, $pagina = null)
+    public static function getBody($startDate = null, $endDate = null, $conceito = null, $codigoExterno = null)
     {
         $period = self::getPeriod($startDate, $endDate);
 

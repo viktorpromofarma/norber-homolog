@@ -54,7 +54,7 @@ class RetornaHoraExtraDiaria extends Command
 
 
         for ($pagina =  1;; $pagina++) {
-            $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno, $pagina);
+            $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno);
 
             try {
                 $response = $client->post($url_base . $command, [
