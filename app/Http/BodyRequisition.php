@@ -36,8 +36,7 @@ class BodyRequisition
                     "CodigoExterno" => $codigoExterno
 
                 ]
-            ],
-            "Pagina" => $pagina
+            ]
         ];
     }
 
