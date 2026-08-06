@@ -53,7 +53,7 @@ class RetornaOcorrenciaAusencia extends Command
 
         for ($pagina = 1;; $pagina++) {
 
-            $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno);
+            $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno, $pagina);
             
 
             try {
