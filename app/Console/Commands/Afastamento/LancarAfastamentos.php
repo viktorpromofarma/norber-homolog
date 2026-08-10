@@ -57,36 +57,36 @@ class LancarAfastamentos extends Command
 
 
             $diasAfastamentoXml = $afastamento->DIAS_AFASTAMENTO !== null && $afastamento->DIAS_AFASTAMENTO !== ''
-            ? "<v1:DiasAfastamento>{$afastamento->DIAS_AFASTAMENTO}</v1:DiasAfastamento>"
-            : '';
+                ? "<v1:DiasAfastamento>{$afastamento->DIAS_AFASTAMENTO}</v1:DiasAfastamento>"
+                : '';
 
-if ($afastamento->details->isNotEmpty()) {
+            if ($afastamento->details->isNotEmpty()) {
 
-    $xmlAtestados = '';
+                $xmlAtestados = '';
 
-    foreach ($afastamento->details as $detail) {
+                foreach ($afastamento->details as $detail) {
 
-        $dataInicio = $detail->DATA_INICIO
-            ? date('Y-m-d', strtotime($detail->DATA_INICIO))
-            : '';
+                    $dataInicio = $detail->DATA_INICIO
+                        ? date('Y-m-d', strtotime($detail->DATA_INICIO))
+                        : '';
 
-        $dataRetorno = $detail->DATA_RETORNO
-        ? date('Y-m-d', strtotime($detail->DATA_RETORNO))
-        : '';
+                    $dataRetorno = $detail->DATA_RETORNO
+                        ? date('Y-m-d', strtotime($detail->DATA_RETORNO))
+                        : '';
 
-        $dataRetornoXml = $dataRetorno
-            ? "<v1:DataRetorno>{$dataRetorno}</v1:DataRetorno>"
-            : '';
+                    $dataRetornoXml = $dataRetorno
+                        ? "<v1:DataRetorno>{$dataRetorno}</v1:DataRetorno>"
+                        : '';
 
-        $diasAtestadoXml = $detail->DIAS_ATESTADO !== null && $detail->DIAS_ATESTADO !== ''
-            ? "<v1:DiasAtestado>{$detail->DIAS_ATESTADO}</v1:DiasAtestado>"
-            : '';
+                    $diasAtestadoXml = $detail->DIAS_ATESTADO !== null && $detail->DIAS_ATESTADO !== ''
+                        ? "<v1:DiasAtestado>{$detail->DIAS_ATESTADO}</v1:DiasAtestado>"
+                        : '';
 
-        $semPrevisaoRetorno = ($detail->SEM_PREVISAO_RETORNO ?? 'N') === 'S' ? 1 : 0;
+                    $semPrevisaoRetorno = ($detail->SEM_PREVISAO_RETORNO ?? 'N') === 'S' ? 1 : 0;
 
 
 
-        $xmlAtestados .= <<<XML
+                    $xmlAtestados .= <<<XML
                         <v1:AtestadoMedico>
                             <v1:DadosGerais>
                                 <v1:Cid>
@@ -101,14 +101,14 @@ if ($afastamento->details->isNotEmpty()) {
                         </v1:AtestadoMedico>
 
                         XML;
-                            }
+                }
 
-                            $atestados = <<<XML
+                $atestados = <<<XML
                                     <v1:AtestadosMedicos>
                                     {$xmlAtestados}
                                     </v1:AtestadosMedicos>
                         XML;
-                        }
+            }
 
 
             $soapBody = <<<XML
@@ -151,6 +151,7 @@ if ($afastamento->details->isNotEmpty()) {
 
 
 
+
             try {
                 $response = $client->post($endpoint, [
                     'headers' => [
@@ -189,7 +190,10 @@ if ($afastamento->details->isNotEmpty()) {
                     'matricula'       => $afastamento->MATRICULA,
                     'empresa'         => $afastamento->EMPRESA,
                     'data_ocorrencia' => $dataOcorrencia,
+
                 ];
+
+                return Command::SUCCESS;
             } catch (\Throwable $th) {
 
 
@@ -199,7 +203,7 @@ if ($afastamento->details->isNotEmpty()) {
             }
         }
 
-         if (!empty($erros)) {
+        if (!empty($erros)) {
             Mail::to(['viktor.santos@promofarma.com.br', 'andrea.scotton@promofarma.com.br'])->send(new AfastamentoAlerta($erros));
         }
     }
