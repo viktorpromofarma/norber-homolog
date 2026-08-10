@@ -5,6 +5,8 @@ namespace App\Console\Commands\Afastamento;
 use App\Http\LGheaders;
 use App\Mail\AfastamentoAlerta;
 use App\Models\LancamentosAtestados as LancamentosAtestadosModel;
+use App\Models\Logs;
+use Carbon\Carbon;
 use GuzzleHttp\Client;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
@@ -197,8 +199,14 @@ class LancarAfastamentos extends Command
             } catch (\Throwable $th) {
 
 
-                $this->error('Erro ao inserir dados: ' . $th->getMessage());
-                $erros[] = "Matrícula {$afastamento->MATRICULA} / Empresa {$afastamento->EMPRESA} / {$dataOcorrencia}: " . $th->getMessage();
+                Logs::create([
+                    'DATA_EXECUCAO' => Carbon::now()->format('d-m-Y H:i:s.v'),
+                    'COMANDO_EXECUTADO' =>  'Lançamento de afastamento' . $afastamento->EMPRESA . '/' . $afastamento->MATRICULA . '/' . $dataOcorrencia,
+                    'STATUS_COMANDO' => $th->getMessage(),
+                    'TOTAL_REGISTROS' => 1
+                ]);
+
+
                 continue;
             }
         }
