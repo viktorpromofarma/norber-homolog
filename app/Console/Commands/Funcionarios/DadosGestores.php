@@ -22,6 +22,8 @@ class DadosGestores extends Command
         $this->empresa = $this->option('Empresa');
 
         $matriculasCadastradas = FuncionarioGestor::query()
+            ->whereMonth('DATA', date('m')) 
+            ->whereYear('DATA', date('Y'))
             ->pluck('MATRICULA');
 
 
@@ -32,6 +34,8 @@ class DadosGestores extends Command
             ->orderBy('MATRICULA')
             ->pluck('MATRICULA');
 
+
+            
 
 
         $maxTipoSituacao = 4;
@@ -136,9 +140,10 @@ XML;
                 FuncionarioGestor::updateOrCreate(
                     [
                         'MATRICULA' => $matricula,
-                        'DATA'      => date('d-m-Y'),
+                       
                     ],
                     [
+                         'DATA'      => date('d-m-Y'),    
                         'MATRICULA_GESTOR'       => (int) $item['matricula'],
                         'NOME_GESTOR'            => $item['nome'],
                         'CENTRO_CUSTO'           => $item['centro_custo_codigo'],

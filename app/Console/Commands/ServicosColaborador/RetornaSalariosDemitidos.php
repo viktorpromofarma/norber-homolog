@@ -4,6 +4,7 @@ namespace App\Console\Commands\ServicosColaborador;
 
 use DOMXPath;
 use DOMDocument;
+use Carbon\Carbon;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Client;
 use App\Http\LGheaders;
@@ -11,24 +12,19 @@ use GuzzleHttp\Psr7\Request;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use App\Models\FinanceiroColaboradores;
-use App\Models\ParametrosDatasPagamentos;
 
-class RetonaSalarios extends Command
+class RetornaSalariosDemitidos extends Command
 {
-    protected $signature = 'lg:consultar-salario
+    protected $signature = 'lg:consultar-demitidos-salario
                             {--Pagina=}
                             {--Empresa=}
-                            {--Mes=}
-                            {--Ano=}
                             {--Concorrencia=5}
                             {--TamanhoLote=50}';
 
-    protected $description = 'Consulta colaboradores na API LG via SOAP (em lote, com requisições concorrentes)';
+    protected $description = 'Consulta colaboradores desligados na API LG via SOAP (em lote, com requisições concorrentes)';
 
     protected $pagina;
     protected $empresa;
-    protected $mes;
-    protected $ano;
     protected $concorrencia;
     protected $tamanhoLote;
 
@@ -42,60 +38,85 @@ class RetonaSalarios extends Command
     {
         $this->pagina = $this->option('Pagina');
         $this->empresa = $this->option('Empresa');
-        $this->mes = $this->option('Mes');
-        $this->ano = $this->option('Ano');
         $this->concorrencia = (int) $this->option('Concorrencia');
         $this->tamanhoLote = (int) $this->option('TamanhoLote');
 
-        if (empty($this->mes) || empty($this->ano)) {
-            $this->error('É necessário informar Mês e Ano de início');
-            return 1;
+        $this->headers = (new LGheaders())->getHeaders();
+        $this->client = new Client([
+            'verify' => false,
+            'timeout' => 90,
+        ]);
+
+        $this->info('Iniciando processamento. Hora de início: ' . date('H:i:s'));
+
+
+
+        $matriculas = DB::connection('promofarma')
+            ->table('dbo.lg_importa_funcionarios_demitidos')
+            ->orderBy('MATRICULA')
+            ->select(
+                'MATRICULA',
+                'DATA_ADMISSAO',
+                DB::RAW('MAX(DATA_RESCISAO) AS DATA_RESCISAO'),
+                DB::RAW('MONTH(MAX(DATA_RESCISAO)) AS MES'),
+                DB::RAW('YEAR(MAX(DATA_RESCISAO)) AS ANO'),
+            )
+            ->groupBy('MATRICULA', 'DATA_ADMISSAO')
+            ->where('DATA_RESCISAO', '>=', '2026-01-01')
+            ->where('DATA_RESCISAO', '<', date('Y-m-01'))
+            ->where('EMPRESA', $this->empresa)
+            ->whereNotIn('CARGO', [
+                16,
+                236,
+                259
+            ])
+            ->orderBy('DATA_RESCISAO', 'asc')
+            ->get();
+
+        $totalMatriculas = $matriculas->count();
+        $this->info("Total de matrículas encontradas: {$totalMatriculas}");
+
+        $matriculasArray = $matriculas->pluck('MATRICULA')->all();
+
+        $existentes = DB::connection('sqlsrv')
+            ->table('RH.LG_COLABORADORES_FINANCEIROS')
+            ->whereIn('MATRICULA', $matriculasArray)
+            ->where('TIPO_PAGINA', $this->pagina)
+            ->select('MATRICULA', 'MES', 'ANO')
+            ->distinct()
+            ->get()
+            ->map(fn($r) => "{$r->MATRICULA}_{$r->MES}_{$r->ANO}")
+            ->flip();
+
+        $pendentes = $matriculas->reject(function ($item) use ($existentes) {
+            return $existentes->has("{$item->MATRICULA}_{$item->MES}_{$item->ANO}");
+        })->values();
+
+
+
+        $totalPuladas = $totalMatriculas - $pendentes->count();
+        $this->info("Pendentes: {$pendentes->count()} de {$totalMatriculas} (já processadas: {$totalPuladas})");
+
+        $totalProcessadas = 0;
+        $totalErros = 0;
+
+        foreach ($pendentes->chunk($this->tamanhoLote) as $lote) {
+            $this->info("\nProcessando lote de {$lote->count()} matrículas...");
+            $this->processarLote($lote, $totalProcessadas, $totalErros);
         }
 
-        $validacao =  ParametrosDatasPagamentos::getValidacaoExecucao($this->mes, $this->ano);
-
-
-        if ($validacao == false) {
-            $this->error('Folha de pagamento ou quinzenal ainda não foi criada para execução da api');
-            exit;
-        } else {
-
-            $this->headers = (new LGheaders())->getHeaders();
-            $this->client = new Client([
-                'verify' => false,
-                'timeout' => 90,
-            ]);
-
-            $this->info('Iniciando processamento de matrículas. Hora de início: ' . date('H:i:s'));
-
-            $totalProcessadas = 0;
-            $totalErros = 0;
-
-
-            DB::connection('promofarma')
-                ->table('dbo.LG_IMPORTA_FUNCIONARIOS')
-                ->where('EMPRESA', $this->empresa)
-                ->orderBy('MATRICULA')
-                ->select('MATRICULA', 'DATA_ADMISSAO')
-                ->chunk($this->tamanhoLote, function ($matriculas) use (&$totalProcessadas, &$totalErros) {
-                    $this->info("\nProcessando lote de {$matriculas->count()} matrículas...");
-                    $this->processarLote($matriculas, $totalProcessadas, $totalErros);
-                });
-
-            $this->info("\nProcesso concluído. " . date('H:i:s'));
-            $this->info("Total processadas com sucesso: {$totalProcessadas} | Total com erro: {$totalErros}");
-        }
+        $this->info("\nProcesso concluído. " . date('H:i:s'));
+        $this->info("Total processadas com sucesso: {$totalProcessadas} | Total com erro: {$totalErros} | Total puladas (já existiam): {$totalPuladas}");
     }
 
 
     protected function processarLote($matriculas, &$totalProcessadas, &$totalErros)
     {
-
         $matriculasIndexadas = $matriculas->values();
 
         $requestsGenerator = function ($matriculasIndexadas) {
             foreach ($matriculasIndexadas as $item) {
-                $soapBody = $this->montarSoapBody($item->MATRICULA);
+                $soapBody = $this->montarSoapBody($item->MATRICULA, $item->MES, $item->ANO);
 
                 yield new Request(
                     'POST',
@@ -113,34 +134,32 @@ class RetonaSalarios extends Command
             'concurrency' => $this->concorrencia,
 
             'fulfilled' => function ($response, $index) use ($matriculasIndexadas, &$totalProcessadas) {
-                $matricula = $matriculasIndexadas[$index]->MATRICULA;
+                $item = $matriculasIndexadas[$index];
                 try {
                     $body = $response->getBody()->getContents();
-                    $registrosInseridos = $this->processarResposta($body);
+                    $registrosInseridos = $this->processarResposta($body, $item->MES, $item->ANO);
 
                     if ($registrosInseridos > 0) {
-                        $this->info(" [Matrícula {$matricula} - {$this->mes}/{$this->ano}: {$registrosInseridos} registros inseridos]");
+                        $this->info(" [Matrícula {$item->MATRICULA} - {$item->MES}/{$item->ANO}: {$registrosInseridos} registros]");
                     }
                     $totalProcessadas++;
                 } catch (\Throwable $e) {
-                    $this->error("Erro ao processar resposta da matrícula {$matricula}: " . $e->getMessage());
+                    $this->error("Erro ao processar resposta da matrícula {$item->MATRICULA}: " . $e->getMessage());
                 }
             },
 
             'rejected' => function ($reason, $index) use ($matriculasIndexadas, &$totalErros) {
-                $matricula = $matriculasIndexadas[$index]->MATRICULA;
+                $item = $matriculasIndexadas[$index];
                 $mensagem = $reason instanceof \Throwable ? $reason->getMessage() : (string) $reason;
-                $this->error("Erro na requisição da matrícula {$matricula}: {$mensagem}");
+                $this->error("Erro na requisição da matrícula {$item->MATRICULA}: {$mensagem}");
                 $totalErros++;
             },
         ]);
 
-
         $pool->promise()->wait();
     }
 
-
-    protected function montarSoapBody(string $matricula): string
+    protected function montarSoapBody(string $matricula, $mes, $ano): string
     {
         return <<<XML
             <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:dto="lg.com.br/svc/dto" xmlns:v1="lg.com.br/api/v1" xmlns:v11="lg.com.br/api/dto/v1">
@@ -156,8 +175,8 @@ class RetonaSalarios extends Command
                             </v11:Colaborador>
                             <v11:FolhaDePagamentoCodigo>{$this->pagina}</v11:FolhaDePagamentoCodigo>
                             <v11:Referencia>
-                                <v11:Ano>{$this->ano}</v11:Ano>
-                                <v11:Mes>{$this->mes}</v11:Mes>
+                                <v11:Ano>{$ano}</v11:Ano>
+                                <v11:Mes>{$mes}</v11:Mes>
                             </v11:Referencia>
                         </v1:filtro>
                     </v1:ConsultarReciboDePagamentoDetalhado>
@@ -167,7 +186,7 @@ class RetonaSalarios extends Command
     }
 
 
-    protected function processarResposta(string $body): int
+    protected function processarResposta(string $body, $mes, $ano): int
     {
         libxml_use_internal_errors(true);
         $dom = new DOMDocument();
@@ -195,7 +214,7 @@ class RetonaSalarios extends Command
                 continue;
             }
 
-            $chaveUnica = "{$matriculaNode}_{$descricao}_{$this->mes}_{$this->ano}";
+            $chaveUnica = "{$matriculaNode}_{$descricao}_{$mes}_{$ano}";
             $resultados[$chaveUnica] = [
                 'descricao' => $descricao,
                 'valor' => $valor,
@@ -210,10 +229,8 @@ class RetonaSalarios extends Command
                 [
                     'MATRICULA' => $matriculaNode,
                     'DESCRICAO' => $resultado['descricao'],
-                    'MES' => $this->mes,
-                    'ANO' => $this->ano,
-                    'CODIGO_EVENTO' => $resultado['codigo_evento'],
-                    'TIPO_PAGINA' => $this->pagina,
+                    'MES' => $mes,
+                    'ANO' => $ano,
                 ],
                 [
                     'NOME' => $nomeNode,

@@ -4,6 +4,7 @@ namespace App\Console\Commands\ServicosColaborador;
 
 use DOMXPath;
 use DOMDocument;
+use Carbon\Carbon;
 use GuzzleHttp\Pool;
 use GuzzleHttp\Client;
 use App\Http\LGheaders;
@@ -13,17 +14,16 @@ use Illuminate\Support\Facades\DB;
 use App\Models\FinanceiroColaboradores;
 use App\Models\ParametrosDatasPagamentos;
 
-class RetonaSalarios extends Command
+class RetornaBeneficios extends Command
 {
-    protected $signature = 'lg:consultar-salario
-                            {--Pagina=}
+    protected $signature = 'lg:consultar-beneficios
                             {--Empresa=}
                             {--Mes=}
                             {--Ano=}
                             {--Concorrencia=5}
                             {--TamanhoLote=50}';
 
-    protected $description = 'Consulta colaboradores na API LG via SOAP (em lote, com requisições concorrentes)';
+    protected $description = 'Consulta benefícios dos colaboradores na API LG via SOAP (em lote, com requisições concorrentes)';
 
     protected $pagina;
     protected $empresa;
@@ -40,7 +40,7 @@ class RetonaSalarios extends Command
 
     public function handle()
     {
-        $this->pagina = $this->option('Pagina');
+        $this->pagina = 29; // CÓDIGOS DE BENEFÍCIOS
         $this->empresa = $this->option('Empresa');
         $this->mes = $this->option('Mes');
         $this->ano = $this->option('Ano');
@@ -52,45 +52,96 @@ class RetonaSalarios extends Command
             return 1;
         }
 
-        $validacao =  ParametrosDatasPagamentos::getValidacaoExecucao($this->mes, $this->ano);
-
+        $validacao = ParametrosDatasPagamentos::getValidacaoExecucao($this->mes, $this->ano);
 
         if ($validacao == false) {
             $this->error('Folha de pagamento ou quinzenal ainda não foi criada para execução da api');
-            exit;
-        } else {
-
-            $this->headers = (new LGheaders())->getHeaders();
-            $this->client = new Client([
-                'verify' => false,
-                'timeout' => 90,
-            ]);
-
-            $this->info('Iniciando processamento de matrículas. Hora de início: ' . date('H:i:s'));
-
-            $totalProcessadas = 0;
-            $totalErros = 0;
-
-
-            DB::connection('promofarma')
-                ->table('dbo.LG_IMPORTA_FUNCIONARIOS')
-                ->where('EMPRESA', $this->empresa)
-                ->orderBy('MATRICULA')
-                ->select('MATRICULA', 'DATA_ADMISSAO')
-                ->chunk($this->tamanhoLote, function ($matriculas) use (&$totalProcessadas, &$totalErros) {
-                    $this->info("\nProcessando lote de {$matriculas->count()} matrículas...");
-                    $this->processarLote($matriculas, $totalProcessadas, $totalErros);
-                });
-
-            $this->info("\nProcesso concluído. " . date('H:i:s'));
-            $this->info("Total processadas com sucesso: {$totalProcessadas} | Total com erro: {$totalErros}");
+            return 1;
         }
+
+        $this->headers = (new LGheaders())->getHeaders();
+        $this->client = new Client([
+            'verify' => false,
+            'timeout' => 90,
+        ]);
+
+        $this->info('Iniciando processamento de matrículas. Hora de início: ' . date('H:i:s'));
+
+        $totalProcessadas = 0;
+        $totalErros = 0;
+        $totalPuladas = 0;
+
+        // chunk() evita carregar 1500+ registros na memória de uma vez
+        DB::connection('promofarma')
+            ->table('dbo.LG_IMPORTA_FUNCIONARIOS')
+            ->where('EMPRESA', $this->empresa)
+            ->orderBy('MATRICULA')
+            ->select('MATRICULA', 'DATA_ADMISSAO')
+            ->chunk($this->tamanhoLote, function ($matriculas) use (&$totalProcessadas, &$totalErros, &$totalPuladas) {
+
+                // Consulta em lote (1 query) quais matrículas já existem, ao invés de
+                // uma query de "exists" por matrícula como no código original.
+                $matriculasArray = $matriculas->pluck('MATRICULA')->all();
+
+                $jaProcessadas = DB::connection('sqlsrv')
+                    ->table('RH.LG_COLABORADORES_FINANCEIROS')
+                    ->whereIn('MATRICULA', $matriculasArray)
+                    ->where('mes', $this->mes)
+                    ->where('ano', $this->ano)
+                    ->where('TIPO_PAGINA', $this->pagina)
+                    ->pluck('MATRICULA')
+                    ->all();
+
+                $jaProcessadasSet = array_flip($jaProcessadas);
+
+                $pendentes = $matriculas->reject(function ($item) use ($jaProcessadasSet) {
+                    return isset($jaProcessadasSet[$item->MATRICULA]);
+                })->values();
+
+                $totalPuladas += ($matriculas->count() - $pendentes->count());
+
+                if ($pendentes->isEmpty()) {
+                    $this->info("\nLote sem matrículas pendentes (todas já processadas). Pulando.");
+                    return;
+                }
+
+                $this->info("\nProcessando lote: {$pendentes->count()} pendentes de {$matriculas->count()} (já processadas: " . ($matriculas->count() - $pendentes->count()) . ")");
+                $this->processarLote($pendentes, $totalProcessadas, $totalErros);
+            });
+
+        $this->info("\nProcesso concluído. " . date('H:i:s'));
+        $this->info("Total processadas com sucesso: {$totalProcessadas} | Total com erro: {$totalErros} | Total puladas (já existiam): {$totalPuladas}");
     }
 
+    private function gerarPeriodos(): array
+    {
+        $periodos = [];
+        $dataInicio = Carbon::createFromDate($this->ano, $this->mes, 1);
+        $dataFim = Carbon::createFromDate($this->ano, $this->mes, 31);
+        $current = $dataInicio->copy();
 
+        while ($current->lessThanOrEqualTo($dataFim)) {
+            $periodos[] = [
+                'mes' => $current->month,
+                'ano' => $current->year,
+            ];
+            $current->addMonth();
+        }
+
+        $this->info('Períodos a processar: ' . count($periodos));
+        foreach ($periodos as $periodo) {
+            $this->info(" - {$periodo['mes']}/{$periodo['ano']}");
+        }
+
+        return $periodos;
+    }
+
+    /**
+     * Dispara as requisições do lote em paralelo via Guzzle Pool,
+     * respeitando o limite de concorrência configurado.
+     */
     protected function processarLote($matriculas, &$totalProcessadas, &$totalErros)
     {
-
         $matriculasIndexadas = $matriculas->values();
 
         $requestsGenerator = function ($matriculasIndexadas) {
@@ -119,7 +170,7 @@ class RetonaSalarios extends Command
                     $registrosInseridos = $this->processarResposta($body);
 
                     if ($registrosInseridos > 0) {
-                        $this->info(" [Matrícula {$matricula} - {$this->mes}/{$this->ano}: {$registrosInseridos} registros inseridos]");
+                        $this->info(" [Matrícula {$matricula} - {$this->mes}/{$this->ano}: {$registrosInseridos} registros]");
                     }
                     $totalProcessadas++;
                 } catch (\Throwable $e) {
@@ -135,11 +186,12 @@ class RetonaSalarios extends Command
             },
         ]);
 
-
         $pool->promise()->wait();
     }
 
-
+    /**
+     * Monta o envelope SOAP para uma matrícula específica.
+     */
     protected function montarSoapBody(string $matricula): string
     {
         return <<<XML
@@ -166,7 +218,10 @@ class RetonaSalarios extends Command
         XML;
     }
 
-
+    /**
+     * Faz o parse do XML de resposta e grava/atualiza os registros no banco.
+     * Retorna a quantidade de registros efetivamente inseridos (novos).
+     */
     protected function processarResposta(string $body): int
     {
         libxml_use_internal_errors(true);
@@ -212,8 +267,6 @@ class RetonaSalarios extends Command
                     'DESCRICAO' => $resultado['descricao'],
                     'MES' => $this->mes,
                     'ANO' => $this->ano,
-                    'CODIGO_EVENTO' => $resultado['codigo_evento'],
-                    'TIPO_PAGINA' => $this->pagina,
                 ],
                 [
                     'NOME' => $nomeNode,
