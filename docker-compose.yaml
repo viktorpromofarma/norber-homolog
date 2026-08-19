@@ -1,4 +1,3 @@
-version: "3"
 services:
   norber_api_php:
     container_name: norber_api_php

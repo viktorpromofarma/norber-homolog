@@ -30,8 +30,6 @@ class RetornaOcorrenciaAusencia extends Command
     public function handle()
     {
 
-     
-
         $startDate = $this->option('start-date');
         $endDate = $this->option('end-date');
         $conceito = $this->option('Conceito');
@@ -42,19 +40,26 @@ class RetornaOcorrenciaAusencia extends Command
             $this->error('Por favor, forneça ambas as datas: --start-date e --end-date');
             return 1;
         }
-        
+        if (
+            !preg_match('/^\d{4}-\d{2}-\d{2}$/', $startDate) ||
+            !preg_match('/^\d{4}-\d{2}-\d{2}$/', $endDate)
+        ) {
+            $this->error('Formato de data inválido. Use YYYY-MM-DD');
+            return 1;
+        }
 
         $client = new Client();
         $headers = Headers::getHeaders();
         $url_base = $this->UrlBaseNorberApi();
         $command = 'Ocorrencia/RetornaOcorrenciaAusencia';
+        $ultimaPaginaProcessada = OcorrenciasAusencias::where('DATA_OCORRENCIA', '>=', $startDate)
+            ->where('DATA_OCORRENCIA', '<=',  $endDate)
+            ->max('PAGINA') ?? 0;
 
-        OcorrenciasAusencias::whereBetween('DATA_OCORRENCIA', [date_format(Carbon::parse($startDate), 'd-m-Y'), date_format(Carbon::parse($endDate), 'd-m-Y')])->delete();
 
-        for ($pagina = 1;; $pagina++) {
+        for ($pagina = $ultimaPaginaProcessada + 1;; $pagina++) {
 
             $body = BodyRequisition::getBody($startDate, $endDate, $conceito, $codigoExterno, $pagina);
-            
 
             try {
                 $response = $client->post($url_base . $command, [
@@ -63,7 +68,6 @@ class RetornaOcorrenciaAusencia extends Command
                 ]);
 
                 $responseContent = $response->getBody()->getContents();
-
                 $data = json_decode($responseContent, true);
                 $itens = $data['ListaDeFiltro'] ?? [];
                 $resultado = [];
@@ -89,22 +93,16 @@ class RetornaOcorrenciaAusencia extends Command
                         $inicioExpediente = Carbon::createFromFormat('d/m/Y H:i', $item['Inicio'])->format('Y-m-d H:i:s');
                         $fimExpediente = Carbon::createFromFormat('d/m/Y H:i', $item['Fim'])->format('Y-m-d H:i:s');
 
-                        OcorrenciasAusencias::UpdateOrCreate(
-                        [
+                        OcorrenciasAusencias::UpdateOrCreate([
                             'MATRICULA'         => $item['Matricula'],
-                            'DATA_OCORRENCIA'   => date_format(Carbon::parse($dataOcorrencia), 'd-m-Y'),
+                            'DATA_OCORRENCIA'   => $dataOcorrencia,
+                            'INICIO_EXPEDIENTE' => $inicioExpediente,
+                            'FIM_EXPEDIENTE'    => $fimExpediente,
                             'DESCRICAO'         => $item['Descricao'],
                             'JUSTIFICATIVA'     => $item['Justificativa'],
-
-                        ],
-                        [
-                            'INICIO_EXPEDIENTE' => date_format(Carbon::parse($inicioExpediente), 'd-m-Y H:i:s') ,
-                            'FIM_EXPEDIENTE'    => date_format(Carbon::parse($fimExpediente), 'd-m-Y H:i:s') ,
                             'QUANTIDADE_HORAS'  => $item['QtdeHoras'],
                             'PAGINA'            => $data['Pagina']
-                        ]                
-
-                        );
+                        ]);
                     }
                     $this->info("Página {$pagina} processada com sucesso. Total registros: " . count($itens));
                     Logs::create([
@@ -120,15 +118,15 @@ class RetornaOcorrenciaAusencia extends Command
 
 
                     if (isset($data['TotalPaginas']) && $pagina >= $data['TotalPaginas']) {
-                        return self::SUCCESS;
+                        break;
                     }
                 } catch (\Throwable $th) {
                     $this->error("Erro ao inserir dados: " . $th->getMessage());
-                    return self::FAILURE;
+                    return 1;
                 }
             } catch (\Exception $e) {
                 $this->error('Erro na requisição: ' . $e->getMessage());
-                return self::FAILURE;
+                return 1;
             }
         }
         return 0;
